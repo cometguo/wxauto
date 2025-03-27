@@ -34,6 +34,7 @@ class WeChat(WeChatBase):
         Args:
             language (str, optional): 微信客户端语言版本, 可选: cn简体中文  cn_t繁体中文  en英文, 默认cn, 即简体中文
         """
+        
         self.UiaAPI: uia.WindowControl = uia.WindowControl(ClassName='WeChatMainWndForPC', searchDepth=1)
         set_debug(debug)
         self.language = language
@@ -71,7 +72,7 @@ class WeChat(WeChatBase):
         self.nickname = self.A_MyIcon.Name
         msgs_ = self.GetAllMessage()
         self.usedmsgid = [i[-1] for i in msgs_]
-        print(f'初始化成功，获取到已登录窗口：{self.nickname}')
+        #print(f'初始化成功，获取到已登录窗口：{self.nickname}')
     
     def _checkversion(self):
         self.HWND = FindWindow(classname='WeChatMainWndForPC')
@@ -81,6 +82,8 @@ class WeChat(WeChatBase):
             Warnings.lightred(self._lang('版本不一致', 'WARNING').format(wxversion, self.VERSION), stacklevel=2)
             return False
     
+    def SetPath(self,path):
+        WxParam.DEFALUT_SAVEPATH=path
     
     def _show(self):
         self.HWND = FindWindow(classname='WeChatMainWndForPC')
@@ -313,27 +316,30 @@ class WeChat(WeChatBase):
         self._show()
         sessiondict = self.GetSessionList(True)
         if who in list(sessiondict.keys())[:-1]:
-            self.SessionBox.ListItemControl(RegexName=who).Click(simulateMove=False)
+            try:
+                self.SessionBox.ListItemControl(RegexName=who).Click(simulateMove=False)
+                return who
+            except:
+                pass
+            
+        self.UiaAPI.SendKeys('{Ctrl}f', waitTime=1)
+        self.B_Search.SendKeys(who, waitTime=1.5)
+        target_control = self.SessionBox.TextControl(Name=f"<em>{who}</em>")
+        if target_control.Exists(timeout):
+            wxlog.debug('选择完全匹配项')
+            target_control.Click(simulateMove=False)
             return who
         else:
-            self.UiaAPI.SendKeys('{Ctrl}f', waitTime=1)
-            self.B_Search.SendKeys(who, waitTime=1.5)
-            target_control = self.SessionBox.TextControl(Name=f"<em>{who}</em>")
-            if target_control.Exists(timeout):
-                wxlog.debug('选择完全匹配项')
-                target_control.Click(simulateMove=False)
-                return who
-            else:
-                search_result_control = self.SessionBox.GetChildren()[1].GetChildren()[1].GetFirstChildControl()
-                if not search_result_control.PaneControl(searchDepth=1).TextControl(RegexName='联系人|群聊').Exists(0.1):
-                    wxlog.debug(f'未找到搜索结果: {who}')
-                    self._refresh()
-                    return False
-                wxlog.debug('选择搜索结果第一个')
-                target_control = search_result_control.Control(RegexName=f'.*{who}.*')
-                chatname = target_control.Name
-                target_control.Click(simulateMove=False)
-                return chatname
+            search_result_control = self.SessionBox.GetChildren()[1].GetChildren()[1].GetFirstChildControl()
+            if not search_result_control.PaneControl(searchDepth=1).TextControl(RegexName='联系人|群聊').Exists(0.1):
+                wxlog.debug(f'未找到搜索结果: {who}')
+                self._refresh()
+                return False
+            wxlog.debug('选择搜索结果第一个')
+            target_control = search_result_control.Control(RegexName=f'.*{who}.*')
+            chatname = target_control.Name
+            target_control.Click(simulateMove=False)
+            return chatname
     
     def AtAll(self, msg=None, who=None):
         """@所有人
@@ -568,11 +574,15 @@ class WeChat(WeChatBase):
             savefile (bool, optional): 是否自动保存聊天文件，只针对该聊天对象有效
             savevoice (bool, optional): 是否自动保存聊天语音，只针对该聊天对象有效
         """
-        exists = uia.WindowControl(searchDepth=1, ClassName='ChatWnd', Name=who).Exists(maxSearchSeconds=0.1)
-        if not exists:
-            self.ChatWith(who)
+        #exists = uia.WindowControl(searchDepth=1, ClassName='ChatWnd', Name=who).Exists(maxSearchSeconds=0.1)
+        #if not exists:
+        self.ChatWith(who)
+        try:
             self.SessionBox.ListItemControl(RegexName=who).DoubleClick(simulateMove=False)
+        except:#already open
+            pass
         self.listen[who] = ChatWnd(who, self.language)
+        self.listen[who]._show()
         self.listen[who].savepic = savepic
         self.listen[who].savefile = savefile
         self.listen[who].savevoice = savevoice
